@@ -1,16 +1,19 @@
-# React + Vite
+# HAIBAZO React Entrance Test
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Simple React/Vite implementation of the HAIBAZO clear-points game.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Enter the number of points and press `Play`.
+- Click points in ascending order from `1` to `n`.
+- Correct clicks turn red and disappear after a `3.0s` countdown.
+- Wrong clicks immediately show `GAME OVER`.
+- `ALL CLEARED` appears only after every point has disappeared completely.
+- `Auto Play ON/OFF` can automatically click the current next point.
+- Supports up to `2000` points for the large case.
 
-## React Compiler
+## Run Locally
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm install
+npm run dev
