@@ -1,121 +1,254 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AUTO_PLAY_INTERVAL_MS,
+  BOARD_HEIGHT,
+  BOARD_WIDTH,
+  DEFAULT_POINTS,
+  MAX_POINTS,
+  MIN_POINTS,
+  POINT_SIZE,
+  clampPointCount,
+  clickPoint,
+  createPoints,
+  formatSeconds,
+  getAutoPlayTarget,
+  isAllCleared,
+  removeExpiredPoints,
+} from "./gameLogic";
+import "./App.css";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [pointInput, setPointInput] = useState(String(DEFAULT_POINTS));
+  const [totalPoints, setTotalPoints] = useState(DEFAULT_POINTS);
+  const [points, setPoints] = useState([]);
+  const [nextNumber, setNextNumber] = useState(1);
+  const [status, setStatus] = useState("idle");
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [nowMs, setNowMs] = useState(0);
+  const [autoPlay, setAutoPlay] = useState(false);
+
+  const startTimeRef = useRef(null);
+  const autoPlayRef = useRef(null);
+  const nextNumberRef = useRef(nextNumber);
+  const pointsRef = useRef(points);
+  const statusRef = useRef(status);
+
+  const title = useMemo(() => {
+    if (status === "gameOver") return "GAME OVER";
+    if (status === "cleared") return "ALL CLEARED";
+    return "LET'S PLAY";
+  }, [status]);
+
+  const clearedCount = useMemo(
+    () => points.filter((point) => point.status === "removed").length,
+    [points],
+  );
+
+  useEffect(() => {
+    nextNumberRef.current = nextNumber;
+    pointsRef.current = points;
+    statusRef.current = status;
+  }, [nextNumber, points, status]);
+
+  const finishGameIfReady = useCallback(
+    (updatedPoints, updatedNextNumber) => {
+      if (!isAllCleared(updatedPoints, totalPoints, updatedNextNumber)) return;
+
+      setStatus("cleared");
+      statusRef.current = "cleared";
+      setAutoPlay(false);
+    },
+    [totalPoints],
+  );
+
+  const startGame = () => {
+    const total = clampPointCount(pointInput);
+    const newPoints = createPoints(total);
+    const startedAt = Date.now();
+
+    startTimeRef.current = startedAt;
+    nextNumberRef.current = 1;
+    pointsRef.current = newPoints;
+    statusRef.current = "playing";
+
+    setPointInput(String(total));
+    setTotalPoints(total);
+    setPoints(newPoints);
+    setNextNumber(1);
+    setStatus("playing");
+    setElapsedMs(0);
+    setNowMs(startedAt);
+    setAutoPlay(false);
+  };
+
+  const handlePointClick = useCallback(
+    (pointId) => {
+      if (statusRef.current !== "playing") return;
+
+      const clickedAt = Date.now();
+      const result = clickPoint(
+        pointsRef.current,
+        pointId,
+        nextNumberRef.current,
+        clickedAt,
+      );
+
+      if (result.result === "ignored") return;
+
+      pointsRef.current = result.points;
+      nextNumberRef.current = result.nextNumber;
+      setPoints(result.points);
+      setNextNumber(result.nextNumber);
+
+      if (result.result === "wrong") {
+        setStatus("gameOver");
+        statusRef.current = "gameOver";
+        setAutoPlay(false);
+        return;
+      }
+
+      finishGameIfReady(result.points, result.nextNumber);
+    },
+    [finishGameIfReady],
+  );
+
+  useEffect(() => {
+    if (status !== "playing") return undefined;
+
+    const timer = window.setInterval(() => {
+      const currentTime = Date.now();
+      const updatedPoints = removeExpiredPoints(pointsRef.current, currentTime);
+
+      setNowMs(currentTime);
+      setElapsedMs(currentTime - startTimeRef.current);
+
+      if (updatedPoints !== pointsRef.current) {
+        pointsRef.current = updatedPoints;
+        setPoints(updatedPoints);
+        finishGameIfReady(updatedPoints, nextNumberRef.current);
+      }
+    }, 100);
+
+    return () => window.clearInterval(timer);
+  }, [finishGameIfReady, status]);
+
+  useEffect(() => {
+    if (!autoPlay || status !== "playing") {
+      if (autoPlayRef.current) {
+        window.clearInterval(autoPlayRef.current);
+        autoPlayRef.current = null;
+      }
+
+      return undefined;
+    }
+
+    autoPlayRef.current = window.setInterval(() => {
+      const target = getAutoPlayTarget(
+        pointsRef.current,
+        nextNumberRef.current,
+      );
+
+      if (target) {
+        handlePointClick(target.id);
+      }
+    }, AUTO_PLAY_INTERVAL_MS);
+
+    return () => {
+      if (autoPlayRef.current) {
+        window.clearInterval(autoPlayRef.current);
+        autoPlayRef.current = null;
+      }
+    };
+  }, [autoPlay, handlePointClick, status]);
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <main className="app">
+      <h1
+        className={
+          status === "cleared"
+            ? "title title-cleared"
+            : status === "gameOver"
+              ? "title title-game-over"
+              : "title"
+        }
+      >
+        {title}
+      </h1>
 
-      <div className="ticks"></div>
+      <section className="controls" aria-label="Game controls">
+        <label className="field" htmlFor="points">
+          <span>Points:</span>
+          <input
+            id="points"
+            type="number"
+            min={MIN_POINTS}
+            max={MAX_POINTS}
+            value={pointInput}
+            onChange={(event) => setPointInput(event.target.value)}
+            disabled={status === "playing"}
+          />
+        </label>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+        <div className="field">
+          <span>Time:</span>
+          <strong>{formatSeconds(elapsedMs)}</strong>
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
+
+        <div className="actions">
+          <button type="button" onClick={startGame}>
+            {status === "idle" ? "Play" : "Restart"}
+          </button>
+
+          {status === "playing" && (
+            <button
+              type="button"
+              onClick={() => setAutoPlay((isAutoPlaying) => !isAutoPlaying)}
+            >
+              Auto Play {autoPlay ? "ON" : "OFF"}
+            </button>
+          )}
         </div>
       </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      <section
+        className="board"
+        style={{ width: BOARD_WIDTH, height: BOARD_HEIGHT }}
+        aria-label="Game board"
+      >
+        {points.map((point) =>
+          point.status === "removed" ? null : (
+            <button
+              key={point.id}
+              type="button"
+              className={`point ${point.status} ${point.isWrong ? "wrong" : ""}`}
+              style={{
+                left: point.x,
+                top: point.y,
+                width: POINT_SIZE,
+                height: POINT_SIZE,
+                zIndex:
+                  point.status === "clicked" || point.isWrong
+                    ? totalPoints + point.id
+                    : totalPoints - point.id,
+              }}
+              onClick={() => handlePointClick(point.id)}
+              disabled={status !== "playing" || point.status !== "active"}
+              aria-label={`Point ${point.id}`}
+            >
+              <span>{point.id}</span>
+              {point.status === "clicked" && (
+                <small>{formatSeconds(point.removeAt - nowMs)}</small>
+              )}
+            </button>
+          ),
+        )}
+      </section>
+
+      <p className="next-label">
+        {status === "playing"
+          ? `Next: ${nextNumber}`
+          : `Cleared: ${clearedCount}/${totalPoints}`}
+      </p>
+    </main>
+  );
 }
-
-export default App
